@@ -7,18 +7,14 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: github-pages
   cancel-in-progress: true
 
 jobs:
-  deploy:
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+  build:
+    name: 构建并上传站点
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -34,5 +30,19 @@ jobs:
       - uses: actions/upload-pages-artifact@v4
         with:
           path: dist
+
+  deploy:
+    name: 发布 GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 等待制品索引就绪
+        run: sleep 10
       - id: deployment
         uses: actions/deploy-pages@v4
