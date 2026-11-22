@@ -161,20 +161,21 @@ export default function App() {
   const previewLabel = actuallyLive ? '实时运行' : '构建快照';
 
   useEffect(() => {
-    const onHashChange = () => setRoute(readRoute());
+    const onHashChange = () => {
+      const nextRoute = readRoute();
+      const nextScenario = scenarios.find((item) => item.id === nextRoute.scenarioId) ?? firstCase('lint');
+      requestCounter.current += 1;
+      setLiveResult(null);
+      setRunError('');
+      setRunning(false);
+      setSource(nextScenario.code);
+      setSpecifier(nextScenario.specifier ?? 'react');
+      setMobileMenu(false);
+      setRoute(nextRoute);
+    };
     window.addEventListener('hashchange', onHashChange);
     return () => window.removeEventListener('hashchange', onHashChange);
   }, []);
-
-  useEffect(() => {
-    requestCounter.current += 1;
-    setLiveResult(null);
-    setRunError('');
-    setRunning(false);
-    setSource(scenario.code);
-    setSpecifier(scenario.specifier ?? 'react');
-    setMobileMenu(false);
-  }, [scenario.id]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -209,7 +210,6 @@ export default function App() {
   const visit = (view: View, caseId?: string) => {
     setMobileMenu(false);
     navigate(view, caseId);
-    setRoute(readRoute());
   };
 
   const invalidate = () => {
