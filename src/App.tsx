@@ -1,14 +1,11 @@
 import {
-  Activity,
   ArrowDownToLine,
-  ArrowRight,
+  BookOpen,
   Braces,
   Check,
-  ChevronDown,
   CircleAlert,
   Clipboard,
   Code2,
-  Command,
   ExternalLink,
   FileCode2,
   FileJson2,
@@ -18,17 +15,20 @@ import {
   Layers3,
   LoaderCircle,
   Menu,
+  Monitor,
+  Moon,
   Play,
   RotateCcw,
   ScanSearch,
-  Sparkles,
+  Sun,
   Terminal,
   WandSparkles,
   X,
   type LucideIcon,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import samplesJson from './data/samples.json';
+import { useThemeMode, type ThemeMode } from './theme';
 
 type ToolId = 'lint' | 'format' | 'parser' | 'transform' | 'minify' | 'resolver';
 
@@ -68,19 +68,22 @@ const toolIcons: Record<ToolId, LucideIcon> = {
   minify: Gauge,
   resolver: FileSearch,
 };
+const themes: { value: ThemeMode; label: string; icon: LucideIcon }[] = [
+  { value: 'system', label: '跟随系统', icon: Monitor },
+  { value: 'light', label: '浅色主题', icon: Sun },
+  { value: 'dark', label: '深色主题', icon: Moon },
+];
 const liveMode = import.meta.env.DEV;
 
 function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  return `${(bytes / 1024).toFixed(1)} KB`;
-}
-
-function getExtension(filename: string): string {
-  return filename.slice(filename.lastIndexOf('.') + 1).toUpperCase();
+  return bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
 }
 
 function toolLabel(tool: ToolId): string {
-  return tool === 'parser' ? 'AST JSON' : tool === 'resolver' ? 'RESOLVE JSON' : tool === 'lint' ? 'DIAGNOSTICS' : 'OUTPUT';
+  if (tool === 'parser') return 'AST 结构';
+  if (tool === 'resolver') return '模块解析结果';
+  if (tool === 'lint') return '检查结果';
+  return '输出结果';
 }
 
 function IconButton({
@@ -96,40 +99,28 @@ function IconButton({
 }) {
   return (
     <button className="icon-button" type="button" onClick={onClick} disabled={disabled} title={title} aria-label={title}>
-      <Icon size={16} strokeWidth={1.8} />
+      <Icon size={17} strokeWidth={1.8} />
     </button>
   );
 }
 
-function ResultBanner({
-  result,
-  running,
-  isLive,
-}: {
+function ResultStatus({ result, running, isLive }: {
   result: RunResult | null;
   running: boolean;
   isLive: boolean;
 }) {
-  return (
-    <div className="result-banner">
-      <span className={`result-indicator ${running ? 'working' : result?.success === false ? 'issue' : result ? 'ready' : ''}`} />
-      <span>
-        {running
-          ? '正在执行工具'
-          : !result
-            ? isLive
-              ? '等待运行'
-              : '正在加载构建结果'
-            : result.success
-              ? '运行完成'
-              : '检测到诊断或错误'}
-      </span>
-      <span className="result-mode">{isLive ? 'LOCAL / NODE.JS' : 'BUILD SNAPSHOT'}</span>
-    </div>
-  );
+  const state = running ? 'working' : !result ? 'idle' : result.success ? 'ready' : 'issue';
+  const label = running
+    ? '正在运行'
+    : !result
+      ? isLive ? '等待运行' : '加载结果中'
+      : result.success ? '运行完成' : '存在诊断信息';
+
+  return <span className={`result-status ${state}`} role="status"><span className="status-light" />{label}</span>;
 }
 
 export default function App() {
+  const { mode, changeMode } = useThemeMode();
   const [selected, setSelected] = useState<ToolId>('lint');
   const [source, setSource] = useState(samples[0].code);
   const [specifier, setSpecifier] = useState(samples[0].specifier);
@@ -142,9 +133,11 @@ export default function App() {
   const [mobileMenu, setMobileMenu] = useState(false);
   const requestCounter = useRef(0);
   const sample = useMemo(() => samples.find((entry) => entry.tool === selected)!, [selected]);
+  const selectedIndex = samples.findIndex((entry) => entry.tool === selected);
   const result = liveMode ? liveResult : (showcase?.results[selected] ?? null);
   const ToolIcon = toolIcons[selected];
   const output = result?.output ?? '';
+  const navStyle = { '--selected-index': selectedIndex } as CSSProperties;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -153,40 +146,52 @@ export default function App() {
         if (!response.ok) throw new Error('无法读取构建快照');
         return response.json() as Promise<Showcase>;
       })
-      .then((data) => setShowcase(data))
+      .then(setShowcase)
       .catch((error: unknown) => {
-        if (!controller.signal.aborted) {
-          setSnapshotError(error instanceof Error ? error.message : '快照不可用');
-        }
+        if (!controller.signal.aborted) setSnapshotError(error instanceof Error ? error.message : '快照不可用');
       });
     return () => controller.abort();
   }, []);
 
   useEffect(() => {
     if (!toast) return;
-    const timeout = window.setTimeout(() => setToast(''), 2500);
+    const timeout = window.setTimeout(() => setToast(''), 2400);
     return () => window.clearTimeout(timeout);
   }, [toast]);
 
-  const chooseTool = (tool: ToolId) => {
-    const next = samples.find((entry) => entry.tool === tool)!;
+  useEffect(() => {
+    if (!mobileMenu) return;
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMobileMenu(false);
+    };
+    window.addEventListener('keydown', onEscape);
+    return () => window.removeEventListener('keydown', onEscape);
+  }, [mobileMenu]);
+
+  const invalidateResult = () => {
     requestCounter.current += 1;
-    setSelected(tool);
-    setSource(next.code);
-    setSpecifier(next.specifier);
     setLiveResult(null);
     setRunError('');
     setRunning(false);
+  };
+
+  const chooseTool = (tool: ToolId) => {
+    if (tool === selected) {
+      setMobileMenu(false);
+      return;
+    }
+    const next = samples.find((entry) => entry.tool === tool)!;
+    invalidateResult();
+    setSelected(tool);
+    setSource(next.code);
+    setSpecifier(next.specifier);
     setMobileMenu(false);
   };
 
   const reset = () => {
-    requestCounter.current += 1;
+    invalidateResult();
     setSource(sample.code);
     setSpecifier(sample.specifier);
-    setLiveResult(null);
-    setRunError('');
-    setRunning(false);
   };
 
   const run = useCallback(async () => {
@@ -235,155 +240,147 @@ export default function App() {
 
   const download = () => {
     if (!result) return;
-    const filename = selected === 'parser' || selected === 'resolver' || selected === 'lint'
+    const filename = selected === 'parser' || selected === 'resolver'
       ? `${selected}-result.json`
-      : `${sample.filename.replace(/\.[^.]+$/, '')}.output.js`;
+      : selected === 'lint'
+        ? 'lint-result.txt'
+        : `${sample.filename.replace(/\.[^.]+$/, '')}.output.js`;
     const blob = new Blob([result.output], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const anchor = document.createElement('a');
     anchor.href = url;
     anchor.download = filename;
     anchor.click();
-    URL.revokeObjectURL(url);
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
   };
 
-  const saved = selected === 'minify' && result
+  const reduction = selected === 'minify' && result
     ? Math.max(0, Math.round((1 - result.outputBytes / Math.max(result.inputBytes, 1)) * 100))
     : null;
 
   return (
-    <div className="app-shell" data-tool={selected}>
+    <div className="app-shell">
       <header className="topbar">
-        <div className="brand" aria-label="Oxc Demo 首页">
-          <span className="brand-symbol"><Code2 size={20} strokeWidth={2.2} /></span>
-          <span className="brand-name">oxc<span className="brand-suffix">/ demo</span></span>
+        <div className="brand" aria-label="Oxc Demo">
+          <span className="brand-mark"><Code2 size={20} strokeWidth={2} /></span>
+          <span className="brand-name">oxc<span> / demo</span></span>
         </div>
-        <div className="topbar-center"><span className="topbar-divider" />JavaScript Toolchain Workbench</div>
-        <div className="top-actions">
-          <span className="top-version">VITE 8 · REACT 19</span>
-          <a className="header-link" href="https://github.com/weepwood/oxc-demo" target="_blank" rel="noopener noreferrer"><Github size={16} /> <span>GitHub</span> <ExternalLink size={12} /></a>
-          <button className="mobile-menu-button" onClick={() => setMobileMenu((value) => !value)} aria-label="切换工具导航" aria-expanded={mobileMenu} type="button">{mobileMenu ? <X size={20} /> : <Menu size={20} />}</button>
+        <div className="header-actions">
+          <div className="theme-switch" role="group" aria-label="颜色主题">
+            {themes.map(({ value, label, icon: Icon }) => (
+              <button
+                className={`theme-option ${mode === value ? 'selected' : ''}`}
+                key={value}
+                type="button"
+                title={label}
+                aria-label={label}
+                aria-pressed={mode === value}
+                onClick={() => changeMode(value)}
+              ><Icon size={17} strokeWidth={1.8} /></button>
+            ))}
+          </div>
+          <a className="github-link" href="https://github.com/weepwood/oxc-demo" target="_blank" rel="noopener noreferrer" aria-label="在 GitHub 查看源码"><Github size={18} /><span>GitHub</span></a>
+          <button className="mobile-menu-button" type="button" onClick={() => setMobileMenu((value) => !value)} aria-label={mobileMenu ? '关闭工具导航' : '打开工具导航'} aria-expanded={mobileMenu} aria-controls="tool-sidebar">{mobileMenu ? <X size={20} /> : <Menu size={20} />}</button>
         </div>
       </header>
 
+      {mobileMenu && <button type="button" className="sidebar-backdrop" onClick={() => setMobileMenu(false)} aria-label="关闭导航菜单" />}
+
       <div className="layout">
-        <aside className={`sidebar ${mobileMenu ? 'open' : ''}`}>
-          <div className="sidebar-section-title">WORKSPACE <ChevronDown size={12} /></div>
-          <div className="sidebar-home"><Activity size={17} /> 工具链概览 <span className="sidebar-count">06</span></div>
-          <div className="sidebar-section-title tools-title">TOOLS <span className="sidebar-count">6 MODULES</span></div>
-          <nav className="tool-nav" aria-label="Oxc 工具导航">
-            {samples.map((entry, index) => {
+        <aside id="tool-sidebar" className={`sidebar ${mobileMenu ? 'open' : ''}`}>
+          <div className="sidebar-label">工具</div>
+          <nav className="tool-nav" aria-label="Oxc 工具导航" style={navStyle}>
+            <span className="nav-indicator" aria-hidden="true" />
+            {samples.map((entry) => {
               const Icon = toolIcons[entry.tool];
               return (
-                <button
-                  key={entry.tool}
-                  className={`nav-item ${selected === entry.tool ? 'active' : ''}`}
-                  onClick={() => chooseTool(entry.tool)}
-                  type="button"
-                  aria-current={selected === entry.tool ? 'page' : undefined}
-                >
+                <button key={entry.tool} className={`nav-item ${selected === entry.tool ? 'active' : ''}`} type="button" onClick={() => chooseTool(entry.tool)} aria-current={selected === entry.tool ? 'page' : undefined}>
                   <Icon size={18} strokeWidth={1.8} />
-                  <span className="nav-item-copy"><strong>{entry.name}</strong><small>{entry.subtitle}</small></span>
-                  <span className="nav-item-index">{String(index + 1).padStart(2, '0')}</span>
+                  <span>{entry.name}</span>
                 </button>
               );
             })}
           </nav>
-          <div className="sidebar-footer">
-            <div className="sidebar-note"><span className="note-dot" /> {liveMode ? 'Local workspace' : 'Static showcase'}</div>
-            <p>{liveMode ? '所有处理均在本机 Node.js 进程完成，不会上传代码。' : '展示内容由 GitHub Actions 构建时调用真实 Oxc 工具生成。'}</p>
-            <a href="https://oxc.rs/" target="_blank" rel="noopener noreferrer">Oxc 官方网站 <ArrowRight size={14} /></a>
+          <div className="sidebar-bottom">
+            <div className="mode-line"><span className="mode-light" />{liveMode ? '本地运行' : '在线预览'}</div>
+            <a href="https://oxc.rs/" target="_blank" rel="noopener noreferrer"><BookOpen size={16} /> Oxc 官方文档 <ExternalLink size={13} /></a>
           </div>
         </aside>
 
-        <main className="main-content">
-          <div className="breadcrumbs"><span>Workbench</span><ArrowRight size={13} /><span>Modules</span><ArrowRight size={13} /><strong>{sample.name}</strong></div>
-
-          <section className="intro-section">
-            <div className="intro-heading">
-              <div className="module-icon"><ToolIcon size={26} strokeWidth={1.65} /></div>
-              <div>
-                <div className="eyebrow">MODULE {String(samples.findIndex((entry) => entry.tool === selected) + 1).padStart(2, '0')} / 06</div>
-                <h1>{sample.name}<span className="subheading"> / {sample.subtitle}</span></h1>
+        <main className="main-content" id="main-content">
+          <div className="tool-view" key={selected}>
+            <section className="intro-section">
+              <div className="intro-heading">
+                <span className="module-icon"><ToolIcon size={24} strokeWidth={1.7} /></span>
+                <div className="intro-text"><h1>{sample.name}</h1><span>{sample.subtitle}</span></div>
+                <a href={sample.docs} className="docs-link" target="_blank" rel="noopener noreferrer">查看文档 <ExternalLink size={14} /></a>
               </div>
-            </div>
-            <p>{sample.description}</p>
-            <div className="intro-links">
-              <a href={sample.docs} target="_blank" rel="noopener noreferrer"><ExternalLink size={14} /> 官方文档</a>
-              <span className="intro-link-separator">·</span>
-              <span><Terminal size={14} /> {sample.command}</span>
-            </div>
-          </section>
-
-          <section className="workspace">
-            <div className="workspace-heading">
-              <div className="workspace-title"><Code2 size={18} /> Playground <span className="workspace-muted">/ {sample.filename}</span></div>
-              <div className="workspace-actions">
-                <span className={`mode-chip ${liveMode ? 'live' : ''}`}><span className="mode-dot" />{liveMode ? '实时运行' : '构建快照'}</span>
-                <IconButton icon={RotateCcw} title="重置示例" onClick={reset} disabled={!liveMode} />
-                <button className="run-button" type="button" onClick={() => void run()} disabled={!liveMode || running}>
-                  {running ? <LoaderCircle size={16} className="spinner" /> : <Play size={15} fill="currentColor" />}
-                  {running ? '运行中' : liveMode ? '运行代码' : '静态预览'}
-                  {liveMode && <kbd><Command size={11} /> ↵</kbd>}
-                </button>
-              </div>
-            </div>
-
-            {!liveMode && (
-              <div className="notice"><CircleAlert size={16} /><span>当前为 GitHub Pages 静态模式。下方展示构建阶段 Oxc 生成的真实输出；如需编辑并执行代码，请克隆仓库运行 <code>npm run dev</code>。</span></div>
-            )}
-
-            <div className="editor-grid">
-              <section className="editor-panel" aria-label="输入代码">
-                <div className="panel-top"><div className="panel-tab"><FileCode2 size={15} /><span>{sample.filename}</span><span className="panel-language">{getExtension(sample.filename)}</span></div><IconButton icon={Clipboard} title="复制输入代码" onClick={() => void copy(source, '源码已复制')} /></div>
-                {selected === 'resolver' && <div className="specifier-row"><label htmlFor="specifier">解析模块</label><input id="specifier" value={specifier} onChange={(event) => setSpecifier(event.target.value)} readOnly={!liveMode} /></div>}
-                <textarea
-                  className="source-input"
-                  value={source}
-                  onChange={(event) => setSource(event.target.value)}
-                  readOnly={!liveMode}
-                  spellCheck={false}
-                  aria-label="输入源代码"
-                  wrap="off"
-                />
-                <div className="panel-bottom"><span><span className="status-dot" /> INPUT</span><span>{formatBytes(new TextEncoder().encode(source).length)} <span className="panel-counter-separator">·</span> {source.split('\n').length} lines</span></div>
-              </section>
-
-              <section className="editor-panel output-panel" aria-label="运行结果">
-                <div className="panel-top"><div className="panel-tab"><FileJson2 size={15} /><span>{toolLabel(selected)}</span><span className="panel-language">READ ONLY</span></div><div className="output-actions"><IconButton icon={Clipboard} title="复制输出" onClick={() => void copy(output, '结果已复制')} disabled={!result} /><IconButton icon={ArrowDownToLine} title="下载输出" onClick={download} disabled={!result} /></div></div>
-                <div className="output-body" tabIndex={0}>
-                  {runError ? <div className="empty-output error"><CircleAlert size={20} /><strong>运行失败</strong><p>{runError}</p></div> : result ? <pre><code>{result.output}</code></pre> : <div className="empty-output"><Braces size={24} /><strong>{snapshotError || (liveMode ? '准备就绪' : '正在加载真实输出')}</strong><p>{liveMode ? '修改左侧代码，然后点击「运行代码」' : '结果会随构建生成，无需浏览器执行 Node 模块。'}</p></div>}
-                </div>
-                <div className="panel-bottom"><span><span className="status-dot" /> {toolLabel(selected)}</span><span>{result ? formatBytes(result.outputBytes) : '—'}</span></div>
-              </section>
-            </div>
-
-            <div className="result-footer">
-              <ResultBanner result={result} running={running} isLive={liveMode} />
-              <div className="metrics">
-                <span><span className="metric-label">DURATION</span><strong>{result ? `${result.durationMs.toFixed(2)} ms` : '—'}</strong></span>
-                <span><span className="metric-label">OUTPUT</span><strong>{result ? formatBytes(result.outputBytes) : '—'}</strong></span>
-                {saved !== null && <span><span className="metric-label">REDUCTION</span><strong>{saved}%</strong></span>}
-              </div>
-            </div>
-          </section>
-
-          <div className="lower-grid">
-            <section className="info-card">
-              <div className="info-card-title"><Sparkles size={17} /> 运行说明</div>
-              <p>{selected === 'lint' ? 'Oxlint 会显示实际诊断；存在规则问题时，退出状态可能为非零，这不是执行器故障。' : selected === 'resolver' ? 'Resolver 查询 Node 模块解析结果，取决于实际安装的依赖与操作系统。' : selected === 'parser' ? 'Parser 输出语法树节点；输出过长时会截断显示，但原始 AST 仍由 Oxc 生成。' : '输出结果来自对应 Oxc 工具的真实 API；性能数字仅代表本次样例运行，不作为基准测试。'}</p>
-              <div className="info-card-command"><Terminal size={15} /><code>{sample.command}</code><button onClick={() => void copy(sample.command, '命令已复制')} type="button" aria-label="复制命令"><Clipboard size={14} /></button></div>
+              <p>{sample.description}</p>
             </section>
-            <section className="info-card">
-              <div className="info-card-title"><Check size={17} /> 工程集成</div>
-              <p>项目同时集成了 Oxlint、Oxfmt、TypeScript 类型检查、Node 测试和 GitHub Actions。Vite 8 使用 Oxc 进行现代前端代码转换。</p>
-              <div className="integration-row"><span><Check size={13} /> Lint</span><span><Check size={13} /> Format</span><span><Check size={13} /> CI</span><span><Check size={13} /> Pages</span></div>
+
+            <section className="workspace" aria-label="代码实验室">
+              <div className="workspace-heading">
+                <div className="workspace-title"><Code2 size={18} /> 代码实验室</div>
+                <div className="workspace-actions">
+                  {liveMode ? (
+                    <>
+                      <button className="subtle-button" type="button" onClick={reset} title="恢复当前示例"><RotateCcw size={16} /> 重置</button>
+                      <button className="run-button" type="button" onClick={() => void run()} disabled={running}>
+                        {running ? <LoaderCircle size={16} className="spinner" /> : <Play size={15} fill="currentColor" />}
+                        {running ? '运行中' : '运行代码'}
+                      </button>
+                    </>
+                  ) : <span className="snapshot-label"><span className="mode-light" /> 构建快照</span>}
+                </div>
+              </div>
+
+              {!liveMode && <div className="snapshot-note"><CircleAlert size={16} />在线版展示 Oxc 构建时的真实运行结果。如需修改代码并执行，请在本地运行 <code>npm run dev</code>。</div>}
+
+              <div className="editor-grid">
+                <section className="editor-panel" aria-label="输入代码">
+                  <div className="panel-top"><span className="panel-title"><FileCode2 size={16} />{sample.filename}</span><IconButton icon={Clipboard} title="复制输入代码" onClick={() => void copy(source, '源码已复制')} /></div>
+                  {selected === 'resolver' && <div className="specifier-row"><label htmlFor="specifier">模块名称</label><input id="specifier" value={specifier} onChange={(event) => { invalidateResult(); setSpecifier(event.target.value); }} readOnly={!liveMode} /></div>}
+                  <textarea
+                    className="source-input"
+                    value={source}
+                    onChange={(event) => { invalidateResult(); setSource(event.target.value); }}
+                    readOnly={!liveMode}
+                    spellCheck={false}
+                    aria-label="输入源代码"
+                    wrap="off"
+                  />
+                  <div className="panel-bottom">{source.split('\n').length} 行 <span>·</span> {formatBytes(new TextEncoder().encode(source).length)}</div>
+                </section>
+                <section className="editor-panel output-panel" aria-label="运行结果">
+                  <div className="panel-top"><span className="panel-title"><FileJson2 size={16} />{toolLabel(selected)}</span><div className="panel-actions"><IconButton icon={Clipboard} title="复制输出" onClick={() => void copy(output, '结果已复制')} disabled={!result} /><IconButton icon={ArrowDownToLine} title="下载输出" onClick={download} disabled={!result} /></div></div>
+                  <div className="output-body" tabIndex={0} aria-label="输出内容">
+                    {runError
+                      ? <div className="empty-output error"><CircleAlert size={22} /><strong>运行失败</strong><p>{runError}</p></div>
+                      : result
+                        ? <pre className="output-code" key={`${selected}-${result.outputBytes}-${result.durationMs}`}><code>{result.output}</code></pre>
+                        : <div className="empty-output">{running ? <LoaderCircle className="spinner" size={24} /> : <Code2 size={24} />}<strong>{snapshotError || (running ? '正在处理代码…' : liveMode ? '等待运行' : '正在加载结果')}</strong>{!running && <p>{liveMode ? '输入代码后，点击运行。' : '由 Oxc 在构建时生成。'}</p>}</div>}
+                  </div>
+                  <div className="panel-bottom">{result ? formatBytes(result.outputBytes) : '暂无输出'}</div>
+                </section>
+              </div>
+              <div className="result-footer">
+                <ResultStatus result={result} running={running} isLive={liveMode} />
+                <div className="metrics">
+                  {result && <><span>耗时 <strong>{result.durationMs.toFixed(2)} ms</strong></span><span>输出 <strong>{formatBytes(result.outputBytes)}</strong></span></>}
+                  {reduction !== null && <span>压缩 <strong>{reduction}%</strong></span>}
+                </div>
+              </div>
+            </section>
+
+            <section className="usage-section">
+              <div className="usage-copy"><strong><Terminal size={17} /> 快速使用</strong><p>复制命令或参考文档，在自己的项目中接入 {sample.name}。</p></div>
+              <div className="command-field"><code>{sample.command}</code><IconButton icon={Clipboard} title="复制命令" onClick={() => void copy(sample.command, '命令已复制')} /></div>
             </section>
           </div>
-          <footer className="page-footer"><span><span className="footer-mark">O</span> Built with Oxc ecosystem</span><span>Open source · <a href="https://github.com/oxc-project/oxc" target="_blank" rel="noopener noreferrer">oxc-project <ExternalLink size={11} /></a></span></footer>
+          <footer className="page-footer">Oxc Demo · <a href="https://github.com/oxc-project/oxc" target="_blank" rel="noopener noreferrer">由 Oxc 驱动 <ExternalLink size={12} /></a></footer>
         </main>
       </div>
-      {toast && <div role="status" className="toast"><Check size={15} />{toast}</div>}
+      {toast && <div key={toast} className="toast" role="status"><Check size={17} />{toast}</div>}
     </div>
   );
 }
