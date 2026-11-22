@@ -1,72 +1,89 @@
-# Oxc Demo
+# Oxc Demo · 工具链实验室
 
-一个面向 JavaScript / TypeScript 工具链的 Oxc 演示工作台，覆盖 **Oxlint、Oxfmt、Parser、Transformer、Minifier、Resolver**。
+一个基于 **React 19 + TypeScript + Vite 8** 的 Oxc 功能演示项目，通过真实运行结果展示六个工具的行为，不将模拟数据当作 Oxc 结果。
 
-- **本地开发**：`npm run dev` 启动可编辑、可执行的真实 Oxc 工具演示（仅在本机运行，不会上传源代码）。
-- **GitHub Pages**：通过构建时真实调用 Oxc 生成快照，提供无需服务端的可查看示例。静态模式不会冒充实时执行。
-- **工程实践**：React + TypeScript + Vite 8、Oxlint、Oxfmt、类型检查、Node 测试、GitHub Actions。
+**在线访问：** https://weepwood.github.io/oxc-demo/
 
-## 快速开始
+## 演示内容
 
-需要 Node.js **22.12+**（建议最新 Node 22 LTS 或 24 LTS）。
+| 工具 | 3 个真实案例 | 深入观察 |
+| --- | --- | --- |
+| **Oxlint** | 未使用变量、调试语句、检查通过 | 规则名称、严重程度、源码行定位 |
+| **Oxfmt** | 对象与数组、链式调用、TSX 组件 | 格式化前后逐行差异 |
+| **Parser** | TypeScript AST、JSX AST、语法错误 | 可展开的 AST 树、节点类型统计、原始 JSON |
+| **Transformer** | 类型移除、JSX 转换、现代语法 | 输入/输出差异 |
+| **Minifier** | 常量折叠、不可达代码、函数压缩 | 代码差异、体积变化 |
+| **Resolver** | React、react-dom/client、lucide-react | 模块解析结果、实际文件路径 |
+
+每个案例提供可共享的地址（Hash 路由）、源码、真实输出、针对性的解释和官方文档。
+
+## 运行
+
+需要 **Node.js 22.12+**。
 
 ```bash
 npm install
 npm run dev
 ```
 
-访问终端提示的本地地址，切换六种工具，编辑代码并点击「运行」。
+开发模式下可以直接修改源码、插入缩进（Tab），并按 **Ctrl / ⌘ + Enter** 执行。处理发生在本地 Node.js 中，不会运行输入的 JS/TS 程序。
 
-## 主要命令
+## 在线版和本地版的区别
 
-| 命令 | 用途 |
-| --- | --- |
-| `npm run dev` | 启动支持真实运行的本地工作台 |
-| `npm run build` | 生成真实 Oxc 示例快照并构建站点 |
-| `npm run preview` | 预览静态构建结果 |
-| `npm run lint` | Oxlint 静态检查 |
-| `npm run lint:fix` | Oxlint 安全修复 |
-| `npm run fmt` | Oxfmt 格式化 |
-| `npm run fmt:check` | Oxfmt 检查 |
-| `npm run typecheck` | TypeScript 类型检查 |
-| `npm test` | Node 内置测试 |
-| `npm run generate` | 重新生成 `public/showcase.json` |
+GitHub Pages 没有 Node.js 服务器，无法直接调用 Oxc 的原生 N-API 工具。因此，构建流程会用已安装的 Oxc 实际执行所有 **18 个案例**，生成 `public/showcase.json`，供在线站点切换展示。页面明确标识快照来源，**不会声称浏览器正在实时分析你编辑的代码**。
 
-## 工作模式
-
-| 操作 | 本地 Vite 开发服务器 | GitHub Pages |
+| 能力 | GitHub Pages | 本地开发服务器 |
 | --- | --- | --- |
-| 浏览全部工具及源码示例 | ✅ | ✅ |
-| 查看 Oxc 真实处理结果 | ✅ | ✅（构建时快照） |
-| 修改代码并即时运行 | ✅ | ❌（静态站点无 Node 运行时） |
-| 复制源码、结果与下载 | ✅ | ✅ |
+| 18 个案例与结果 | ✅ 构建时真实快照 | ✅ 构建快照、实时运行 |
+| AST 树 / 诊断 / 差异对比 | ✅ | ✅ |
+| 复制、下载、案例分享链接 | ✅ | ✅ |
+| 直接编辑并重新执行 | ❌ | ✅ |
+| 浅色 / 深色 / 跟随系统 | ✅ | ✅ |
 
-开发服务器的 `/api/run` 仅在本地提供，源码在本地 Node.js 进程处理；**不执行用户输入的 JS/TS**。Oxlint 只读取临时文件，调用完成即删除。输入长度有上限，输出经过截断，防止意外占用资源。
+> **注意：** 在线 Resolver 解析出的绝对路径来自 GitHub Actions 的构建机器，而不是访客电脑。显示的处理耗时是快照生成时的耗时，不代表浏览器或任何机器的 Oxc 基准测试。代码差异是可视化逐行比较，不是语义等价性证明。
 
+## 工程命令
 
-## 主题与交互
+```bash
+npm run dev        # 本地交互式工作台
+npm run build      # 生成 18 个快照、类型检查并编译
+npm run preview    # 预览生产构建
+npm run lint       # Oxlint
+npm run lint:fix   # Oxlint 安全修复
+npm run fmt        # Oxfmt 格式化
+npm run fmt:check  # Oxfmt 格式检查
+npm run typecheck  # TypeScript 类型检查
+npm test           # Node 测试
+npm run generate   # 单独生成真实案例快照
+```
 
-- 主题默认设置为 **跟随系统**：根据操作系统的浅色 / 深色外观自动切换，系统主题改变时无需刷新页面。
-- 顶部主题切换支持 **系统 / 浅色 / 深色** 三种选择；手动选择保存在本机浏览器，下次访问自动恢复。重新选择「系统」即可恢复自动跟随。
-- 应用使用语义颜色变量统一管理背景、边框、文本、代码面板和交互状态，避免浅色模式对比度不足。
-- 工具导航高亮平滑移动，切换模块时内容轻量淡入；按钮反馈、运行状态、输出和提示有适度动画。
-- 移动端支持滑出导航、点击遮罩关闭、按 Escape 关闭。
-- 遵守 `prefers-reduced-motion`：系统设置减少动态效果时，会关闭非必要动效。
+案例定义在 `src/data/samples.json`，工具说明在 `src/data/catalog.ts`。添加案例无需修改页面：只需要使用唯一 ID、对应工具与合法源代码，重新执行构建即可自动生成输出。
 
-## GitHub Pages
+## 项目结构
 
-仓库包含 `.github/workflows/pages.yml`。在仓库 **Settings → Pages** 中将 Source 设为 **GitHub Actions** 后，推送 `main` 将自动部署到：
+```text
+src/
+  App.tsx                 工作台与路由
+  theme.ts                系统主题监听、存储
+  styles.css              语义设计变量、界面与响应式样式
+  components/Inspector.tsx AST / 差异 / 诊断 / Resolver 视图
+  lib/inspect.ts          诊断、AST 计数与差异算法
+  data/catalog.ts         工具能力元信息
+  data/samples.json       18 个案例
+scripts/
+  engine.mjs              真实 Oxc Node 执行器
+  generate.mjs            构建期案例快照
+  *.test.mjs              自动化测试
+```
 
-https://weepwood.github.io/oxc-demo/
+## 部署
 
-## 官方文档
+仓库通过 `.github/workflows/pages.yml` 自动构建并发布到 GitHub Pages。通过 `.github/workflows/ci.yml` 检查 Oxlint、类型与测试。
 
-- [Oxc](https://oxc.rs/)
-- [Oxlint](https://oxc.rs/docs/guide/usage/linter)
-- [Oxfmt](https://oxc.rs/docs/guide/usage/formatter)
-- [Parser](https://oxc.rs/docs/guide/usage/parser)
-- [Transformer](https://oxc.rs/docs/guide/usage/transformer)
-- [Minifier](https://oxc.rs/docs/guide/usage/minifier)
-- [Resolver](https://oxc.rs/docs/guide/usage/resolver)
+## 相关项目
 
-> Oxc 包更新较频繁；此仓库将依赖版本明确记录在 `package.json`，示例输出以实际安装和运行结果为准。
+- [Oxc 文档](https://oxc.rs/)
+- [Oxc 官方 Playground](https://playground.oxc.rs/)
+- [Oxc GitHub](https://github.com/oxc-project/oxc)
+
+示例代码为教学用途。功能和解析结果以项目依赖版本实际执行为准。
