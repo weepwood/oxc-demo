@@ -137,7 +137,7 @@ export default function App() {
   const result = liveMode ? liveResult : (showcase?.results[selected] ?? null);
   const ToolIcon = toolIcons[selected];
   const output = result?.output ?? '';
-  const navStyle = { '--selected-index': selectedIndex } as CSSProperties;
+  const navStyle = { '--indicator-offset': `${selectedIndex * 50}px` } as CSSProperties;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -325,7 +325,7 @@ export default function App() {
                   {liveMode ? (
                     <>
                       <button className="subtle-button" type="button" onClick={reset} title="恢复当前示例"><RotateCcw size={16} /> 重置</button>
-                      <button className="run-button" type="button" onClick={() => void run()} disabled={running}>
+                      <button className="run-button" type="button" title="运行代码（Ctrl/⌘ + Enter）" onClick={() => void run()} disabled={running}>
                         {running ? <LoaderCircle size={16} className="spinner" /> : <Play size={15} fill="currentColor" />}
                         {running ? '运行中' : '运行代码'}
                       </button>

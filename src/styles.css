@@ -80,7 +80,7 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
 ::selection { background: var(--accent-soft); color: var(--text-strong); }
 
 .app-shell { min-height: 100vh; background: var(--page); }
-.topbar, .sidebar, .workspace, .editor-panel, .usage-section,
+.app-shell, body, .topbar, .sidebar, .workspace, .editor-panel, .usage-section,
 .theme-switch, .theme-option, .nav-indicator, .nav-item, .module-icon,
 .command-field, .icon-button, .run-button, .subtle-button, .snapshot-note {
   transition: background-color 200ms ease, color 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
@@ -183,7 +183,7 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
   border: 1px solid var(--accent-border);
   border-radius: 9px;
   background: var(--active);
-  transform: translateY(calc(var(--selected-index) * 50px));
+  transform: translateY(var(--indicator-offset, 0px));
   transition: transform 270ms cubic-bezier(.22, 1, .36, 1), background-color 200ms ease, border-color 200ms ease;
   pointer-events: none;
 }
@@ -517,9 +517,11 @@ button:focus-visible, a:focus-visible, textarea:focus-visible, input:focus-visib
     flex-basis: 250px;
     box-shadow: 16px 0 40px rgba(0, 0, 0, .05);
     transform: translateX(-105%);
-    transition: transform 245ms cubic-bezier(.22, 1, .36, 1), background-color 200ms ease;
+    visibility: hidden;
+    pointer-events: none;
+    transition: transform 245ms cubic-bezier(.22, 1, .36, 1), background-color 200ms ease, visibility 0s 245ms;
   }
-  .sidebar.open { transform: translateX(0); }
+  .sidebar.open { transform: translateX(0); visibility: visible; pointer-events: auto; transition: transform 245ms cubic-bezier(.22, 1, .36, 1), background-color 200ms ease, visibility 0s; }
   .main-content { width: 100%; padding: 28px 15px 20px; }
   .intro-section { margin-bottom: 25px; }
   .intro-heading { gap: 12px; }
