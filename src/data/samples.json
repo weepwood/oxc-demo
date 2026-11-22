@@ -1,0 +1,68 @@
+[
+  {
+    "tool": "lint",
+    "name": "Oxlint",
+    "subtitle": "静态代码检查",
+    "filename": "quality.ts",
+    "specifier": "react",
+    "code": "const unusedValue = 42;\n\nfunction greet(name: string) {\n  const message = `Hello, ${name}`;\n  return message;\n}\n\nconsole.log(greet('Oxc'));\n",
+    "description": "故意保留一个未使用变量，让 Oxlint 给出真正的代码诊断。",
+    "command": "npm run lint",
+    "docs": "https://oxc.rs/docs/guide/usage/linter"
+  },
+  {
+    "tool": "format",
+    "name": "Oxfmt",
+    "subtitle": "统一代码格式",
+    "filename": "format.ts",
+    "specifier": "react",
+    "code": "const config={name:'oxc',features:['lint','format','parse'],enabled:true}\nexport function describe(){return `Using ${config.name} for ${config.features.length} tasks`}\n",
+    "description": "体验空格、换行、引号和对象排版的统一格式化。",
+    "command": "npm run fmt",
+    "docs": "https://oxc.rs/docs/guide/usage/formatter"
+  },
+  {
+    "tool": "parser",
+    "name": "Parser",
+    "subtitle": "探索抽象语法树",
+    "filename": "ast.ts",
+    "specifier": "react",
+    "code": "interface User { id: number; name: string }\n\nexport const greet = (user: User) => {\n  return `Hello, ${user.name}!`;\n};\n",
+    "description": "使用 Oxc Parser 解析 TypeScript，并查看实际生成的 ESTree 风格 AST。",
+    "command": "import { parseSync } from 'oxc-parser'",
+    "docs": "https://oxc.rs/docs/guide/usage/parser"
+  },
+  {
+    "tool": "transform",
+    "name": "Transformer",
+    "subtitle": "TypeScript → JavaScript",
+    "filename": "transform.ts",
+    "specifier": "react",
+    "code": "type Status = 'idle' | 'ready';\n\ninterface Project {\n  name: string;\n  status?: Status;\n}\n\nexport function summarize(project: Project): string {\n  return project.status ?? 'idle';\n}\n",
+    "description": "移除 TypeScript 类型并保留 JavaScript 运行时语义。",
+    "command": "import { transform } from 'oxc-transform'",
+    "docs": "https://oxc.rs/docs/guide/usage/transformer"
+  },
+  {
+    "tool": "minify",
+    "name": "Minifier",
+    "subtitle": "压缩 JavaScript",
+    "filename": "bundle.js",
+    "specifier": "react",
+    "code": "function formatUser(user) {\n  const prefix = 'Hello, ';\n  const suffix = '!';\n  return prefix + user.name + suffix;\n}\n\nconsole.log(formatUser({ name: 'Oxc' }));\n",
+    "description": "让 Oxc Minifier 进行真实的代码压缩，并比较前后字节数。",
+    "command": "import { minifySync } from 'oxc-minify'",
+    "docs": "https://oxc.rs/docs/guide/usage/minifier"
+  },
+  {
+    "tool": "resolver",
+    "name": "Resolver",
+    "subtitle": "定位模块入口",
+    "filename": "entry.ts",
+    "specifier": "react",
+    "code": "import React from 'react';\n\nexport const version = React.version;\n",
+    "description": "从项目根目录解析 react 包路径。静态输出记录构建环境路径，仅供参考。",
+    "command": "import { ResolverFactory } from 'oxc-resolver'",
+    "docs": "https://oxc.rs/docs/guide/usage/resolver"
+  }
+]

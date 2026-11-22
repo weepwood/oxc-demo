@@ -1,0 +1,9 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript"],
+  "ignorePatterns": ["dist/**", "public/showcase.json", ".oxc-run-*/**"],
+  "rules": {
+    "no-unused-vars": "warn",
+    "no-debugger": "error"
+  }
+}

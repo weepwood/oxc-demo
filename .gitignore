@@ -1,0 +1,7 @@
+node_modules/
+dist/
+public/showcase.json
+.oxc-run-*/
+.DS_Store
+*.log
+*.tsbuildinfo
