@@ -5,6 +5,7 @@ export interface RunResult {
   outputBytes: number;
   diagnostics: string[];
   success: boolean;
+  truncated?: boolean;
 }
 
 export interface Scenario {
@@ -61,25 +62,30 @@ export function parseJson(text: string): unknown | null {
 
 export function getDiagnostics(result: RunResult): LintDiagnostic[] {
   const json = parseJson(result.output);
-  if (!Array.isArray(json)) return [];
-  const messages: LintDiagnostic[] = [];
-  for (const file of json) {
-    if (!file || typeof file !== 'object' || !('messages' in file)) continue;
-    const items = (file as { messages?: unknown }).messages;
-    if (!Array.isArray(items)) continue;
-    for (const item of items) {
-      if (!item || typeof item !== 'object') continue;
-      const diagnostic = item as Record<string, unknown>;
-      messages.push({
-        message: typeof diagnostic.message === 'string' ? diagnostic.message : '未知诊断',
-        ruleId: typeof diagnostic.ruleId === 'string' ? diagnostic.ruleId : 'unknown',
-        line: typeof diagnostic.line === 'number' ? diagnostic.line : 0,
-        column: typeof diagnostic.column === 'number' ? diagnostic.column : 0,
-        severity: typeof diagnostic.severity === 'number' ? diagnostic.severity : 1,
-      });
-    }
-  }
-  return messages;
+  const record = (value: unknown): Record<string, unknown> =>
+    value && typeof value === 'object' ? value as Record<string, unknown> : {};
+  const root = record(json);
+  const items: unknown[] = Array.isArray(root.diagnostics)
+    ? root.diagnostics
+    : Array.isArray(json)
+      ? json.flatMap((file) => {
+        const value = record(file).messages;
+        return Array.isArray(value) ? value : [];
+      })
+      : [];
+  return items.map((item) => {
+    const diagnostic = record(item);
+    const labels = Array.isArray(diagnostic.labels) ? diagnostic.labels : [];
+    const primary = record(labels[0]);
+    const span = record(primary.span);
+    return {
+      message: typeof diagnostic.message === 'string' ? diagnostic.message : '未知诊断',
+      ruleId: typeof diagnostic.code === 'string' ? diagnostic.code : typeof diagnostic.ruleId === 'string' ? diagnostic.ruleId : 'unknown',
+      line: Number(diagnostic.line ?? span.line ?? primary.line ?? 0) || 0,
+      column: Number(diagnostic.column ?? span.column ?? primary.column ?? 0) || 0,
+      severity: diagnostic.severity === 'error' || diagnostic.severity === 2 ? 2 : 1,
+    };
+  });
 }
 
 export function getAstNodeCounts(root: unknown): { type: string; count: number }[] {
@@ -105,10 +111,19 @@ export function getAstNodeCounts(root: unknown): { type: string; count: number }
 }
 
 export function compareLines(input: string, output: string): DiffRow[] {
-  const before = input.replace(/\n$/, '').split('\n').slice(0, 160);
-  const after = output.replace(/\n$/, '').split('\n').slice(0, 160);
+  const before = input.replace(/\n$/, '').split('\n');
+  const after = output.replace(/\n$/, '').split('\n');
   const rows = before.length;
   const cols = after.length;
+  // Avoid quadratic allocation for unusually large inputs. A full replacement
+  // is conservative and never hides changes beyond a display cutoff.
+  if (rows * cols > 1_000_000) {
+    if (input === output) return before.map((value, i) => ({ kind: 'same', value, oldLine: i + 1, newLine: i + 1 }));
+    return [
+      ...before.map((value, i): DiffRow => ({ kind: 'removed', value, oldLine: i + 1 })),
+      ...after.map((value, i): DiffRow => ({ kind: 'added', value, newLine: i + 1 })),
+    ];
+  }
   const lengths: number[][] = Array.from({ length: rows + 1 }, () => Array<number>(cols + 1).fill(0));
   for (let i = rows - 1; i >= 0; i--) {
     for (let j = cols - 1; j >= 0; j--) {

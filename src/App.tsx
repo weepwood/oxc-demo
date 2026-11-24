@@ -148,6 +148,7 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const editorRef = useRef<HTMLTextAreaElement>(null);
   const requestCounter = useRef(0);
+  const requestController = useRef<AbortController | null>(null);
   const scenario = useMemo(() => scenarios.find((item) => item.id === route.scenarioId) ?? firstCase('lint'), [route.scenarioId]);
   const [source, setSource] = useState(scenario.code);
   const [specifier, setSpecifier] = useState(scenario.specifier ?? 'react');
@@ -164,6 +165,7 @@ export default function App() {
     const onHashChange = () => {
       const nextRoute = readRoute();
       const nextScenario = scenarios.find((item) => item.id === nextRoute.scenarioId) ?? firstCase('lint');
+      requestController.current?.abort();
       requestCounter.current += 1;
       setLiveResult(null);
       setRunError('');
@@ -213,6 +215,7 @@ export default function App() {
   };
 
   const invalidate = () => {
+    requestController.current?.abort();
     requestCounter.current += 1;
     setLiveResult(null);
     setRunError('');
@@ -238,12 +241,17 @@ export default function App() {
   const run = useCallback(async () => {
     if (!liveMode || running) return;
     const requestId = ++requestCounter.current;
+    const controller = new AbortController();
+    requestController.current?.abort();
+    requestController.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 15_000);
     setRunning(true);
     setRunError('');
     setLiveResult(null);
     try {
       const response = await fetch('/api/run', {
         method: 'POST',
+        signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tool: scenario.tool, filename: scenario.filename, code: source, specifier }),
       });
@@ -251,8 +259,9 @@ export default function App() {
       if (!response.ok) throw new Error('error' in data ? data.error : '执行失败');
       if (requestCounter.current === requestId) setLiveResult(data as RunResult);
     } catch (error) {
-      if (requestCounter.current === requestId) setRunError(error instanceof Error ? error.message : '执行失败');
+      if (requestCounter.current === requestId) setRunError(controller.signal.aborted ? '请求超时或已取消' : error instanceof Error ? error.message : '执行失败');
     } finally {
+      window.clearTimeout(timeout);
       if (requestCounter.current === requestId) setRunning(false);
     }
   }, [running, scenario.tool, scenario.filename, source, specifier]);
@@ -303,9 +312,9 @@ export default function App() {
   };
 
   const download = () => {
-    if (!result) return;
+    if (!result || result.truncated) return;
     const extension = scenario.tool === 'parser' || scenario.tool === 'resolver' || scenario.tool === 'lint'
-      ? 'json' : 'js';
+      ? 'json' : scenario.tool === 'format' ? scenario.filename.split('.').pop() ?? 'js' : 'js';
     const blob = new Blob([result.output], { type: 'text/plain;charset=utf-8' });
     const uri = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -379,7 +388,7 @@ export default function App() {
                   <div className="workbench-heading"><h2>{scenario.title}</h2><span>{scenario.description}</span></div>
                   <div className="workbench-actions">
                     <IconAction icon={Share2} label="复制案例链接" onClick={share} />
-                    {result && <><IconAction icon={Clipboard} label="复制结果" onClick={() => void copy(result.output, '结果已复制')} /><IconAction icon={ArrowDownToLine} label="下载结果" onClick={download} /></>}
+                    {result && <><IconAction icon={Clipboard} label="复制结果" onClick={() => void copy(result.output, '结果已复制')} /><IconAction icon={ArrowDownToLine} label="下载结果" disabled={result.truncated} onClick={download} /></>}
                     {liveMode && <><IconAction icon={RotateCcw} label="恢复示例" onClick={reset} /><button className="run-button" type="button" disabled={running} title="Ctrl / ⌘ + Enter" onClick={() => void run()}><Play size={15} fill="currentColor"/>{running ? '运行中…' : '运行'}</button></>}
                     {!liveMode && <span className="snapshot-label"><span className="mode-light" />可查看结果</span>}
                   </div>
@@ -390,7 +399,7 @@ export default function App() {
                     {tool.id === 'resolver' && <div className="specifier-bar"><label htmlFor="specifier">模块标识符</label><input id="specifier" value={specifier} onChange={(event) => changeSpecifier(event.target.value)} readOnly={!liveMode} /><span>{liveMode ? '可修改' : '构建时解析'}</span></div>}
                     <SourceEditor value={source} onChange={changeSource} fileName={scenario.filename} readOnly={!liveMode} wrap={wrap} onToggleWrap={() => setWrap(!wrap)} editorRef={editorRef} onKeyDown={handleEditorKeyDown} />
                   </div>
-                  <Inspector key={scenario.id} tool={tool.id} source={source} result={result} loading={running || (!showcase && !snapshotError)} error={runError || snapshotError} specifier={specifier} onJump={jumpToLine} />
+                  <Inspector key={scenario.id} tool={tool.id} source={source} result={result} loading={running || (!showcase && !snapshotError)} error={runError || (result ? '' : snapshotError)} specifier={specifier} onJump={jumpToLine} />
                 </div>
                 <div className="workbench-status">
                   <span className={`run-status ${result ? result.success ? 'success' : 'warning' : 'idle'}`}><span />{running ? '处理中' : runError ? '运行失败' : result ? result.success ? '处理完成' : '存在诊断' : '等待结果'}</span>

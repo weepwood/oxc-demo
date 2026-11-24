@@ -8,6 +8,7 @@ const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const TOOLS = new Set(['lint', 'format', 'parser', 'transform', 'minify', 'resolver']);
 const MAX_INPUT_LENGTH = 16_000;
 const MAX_OUTPUT_LENGTH = 32_000;
+const MAX_STRUCTURED_OUTPUT = 4_000_000;
 
 export function validateInput(input) {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) {
@@ -58,12 +59,16 @@ async function lintCode(filename, code) {
       });
       let stdout = '';
       let stderr = '';
-      const timeout = setTimeout(() => child.kill(), 7_000);
+      let timedOut = false;
+      let overflow = false;
+      const timeout = setTimeout(() => { timedOut = true; child.kill(); }, 7_000);
       child.stdout.on('data', (chunk) => {
-        stdout += String(chunk).slice(0, MAX_OUTPUT_LENGTH);
+        if (stdout.length + chunk.length > MAX_STRUCTURED_OUTPUT) { overflow = true; child.kill(); return; }
+        stdout += String(chunk);
       });
       child.stderr.on('data', (chunk) => {
-        stderr += String(chunk).slice(0, MAX_OUTPUT_LENGTH);
+        if (stderr.length + chunk.length > MAX_STRUCTURED_OUTPUT) { overflow = true; child.kill(); return; }
+        stderr += String(chunk);
       });
       child.once('error', (error) => {
         clearTimeout(timeout);
@@ -71,6 +76,7 @@ async function lintCode(filename, code) {
       });
       child.once('close', (exitCode) => {
         clearTimeout(timeout);
+        if (timedOut || overflow) { reject(new Error(timedOut ? 'Oxlint 执行超时' : 'Oxlint 输出超过安全限制')); return; }
         resolve({ stdout, stderr, exitCode });
       });
     });
@@ -148,12 +154,15 @@ export async function runTool(rawInput) {
     }
   }
 
-  const normalizedOutput = output.length > MAX_OUTPUT_LENGTH
-    ? output.slice(0, MAX_OUTPUT_LENGTH) + '\n\n…结果过长，已截断'
-    : output;
+  const structured = ['lint', 'parser', 'resolver'].includes(tool);
+  const limit = structured ? MAX_STRUCTURED_OUTPUT : MAX_OUTPUT_LENGTH;
+  if (structured && output.length > limit) throw new Error('结构化结果超过安全限制，请缩短输入代码');
+  const truncated = output.length > limit;
+  const normalizedOutput = truncated ? output.slice(0, limit) : output;
 
   return {
     output: normalizedOutput,
+    truncated,
     durationMs: Math.round((performance.now() - start) * 100) / 100,
     inputBytes: Buffer.byteLength(code, 'utf8'),
     outputBytes: Buffer.byteLength(output, 'utf8'),
