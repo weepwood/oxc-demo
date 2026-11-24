@@ -100,3 +100,5 @@ scripts/
 - CodeMirror 6 提供语法高亮、折叠、搜索、行号与缩进。
 - 静态站点的 Parser 可在独立 Web Worker 中运行 `@oxc-parser/wasm@0.60.0`，与原生快照的 0.156.0 明确区分；取消请求会终止 Worker。
 - 其余工具保留原生运行与静态快照，不模拟浏览器工具输出。
+
+浏览器回归测试：构建 GitHub Pages 版本后执行 `npx playwright install chromium` 和 `npm run test:browser`。CI 会检查真实 WASM 解析结果，而不仅检查页面是否打开。

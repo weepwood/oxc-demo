@@ -1,5 +1,5 @@
 import { useEffect, useRef, type RefObject } from 'react';
-import { EditorState, Compartment } from '@codemirror/state';
+import { EditorState, Compartment, Transaction } from '@codemirror/state';
 import { EditorView, keymap } from '@codemirror/view';
 import { indentWithTab } from '@codemirror/commands';
 import { javascript } from '@codemirror/lang-javascript';
@@ -51,7 +51,7 @@ export function CodeEditor({ value, onChange, fileName, readOnly, wrap, onToggle
           readonlyCompartment.current.of([]),
           wrapCompartment.current.of([]),
           EditorView.updateListener.of((update) => {
-            if (update.docChanged) callback.current(update.state.doc.toString());
+            if (update.docChanged && !update.transactions.some((transaction) => transaction.annotation(Transaction.userEvent) === 'sync.external')) callback.current(update.state.doc.toString());
           }),
         ],
       }),
@@ -63,7 +63,7 @@ export function CodeEditor({ value, onChange, fileName, readOnly, wrap, onToggle
   useEffect(() => {
     const view = editorRef.current;
     if (view && view.state.doc.toString() !== value) {
-      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value } });
+      view.dispatch({ changes: { from: 0, to: view.state.doc.length, insert: value }, annotations: Transaction.userEvent.of('sync.external') });
     }
   }, [value, editorRef]);
 
