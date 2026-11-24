@@ -27,7 +27,7 @@ import type { EditorView } from '@codemirror/view';
 import { runBrowserParser } from './lib/browser-engine';
 import { getTool, tools, type ToolId } from './data/catalog';
 import scenariosJson from './data/samples.json';
-import { formatBytes, type RunResult, type Scenario, type Showcase } from './lib/inspect';
+import { type RunResult, type Scenario, type Showcase } from './lib/inspect';
 import { useThemeMode, type ThemeMode } from './theme';
 
 type View = 'overview' | ToolId;

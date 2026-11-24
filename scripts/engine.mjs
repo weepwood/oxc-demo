@@ -2,6 +2,7 @@ import { spawn } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { basename, dirname, join } from 'node:path';
 import { performance } from 'node:perf_hooks';
+import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -44,16 +45,16 @@ function messages(items) {
 }
 
 async function lintCode(filename, code) {
-  const temporaryDirectory = await mkdtemp(join(ROOT, '.oxc-run-'));
+  const temporaryDirectory = await mkdtemp(join(tmpdir(), 'oxc-run-'));
   const temporaryFile = join(temporaryDirectory, filename);
   try {
     await writeFile(temporaryFile, code, 'utf8');
     const command = join(ROOT, 'node_modules', '.bin', process.platform === 'win32' ? 'oxlint.cmd' : 'oxlint');
-    const args = ['--no-ignore', '--config', join(ROOT, '.oxlintrc.json'), '-f', 'json', '-D', 'no-unused-vars', temporaryFile];
+    const args = ['--no-ignore', '--config', join(ROOT, '.oxlintrc.json'), '-f', 'json', '-D', 'no-unused-vars', filename];
 
     const { stdout, stderr, exitCode } = await new Promise((resolve, reject) => {
       const child = spawn(command, args, {
-        cwd: ROOT,
+        cwd: temporaryDirectory,
         windowsHide: true,
         shell: process.platform === 'win32',
       });
