@@ -470,3 +470,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, textarea:focus-visib
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; }
 }
+
+/* CodeMirror: keep the editor in the same bounded workbench. */
+.cm-host { flex: 1; min-width: 0; height: 384px; min-height: 332px; overflow: hidden; }
+.cm-host .cm-editor { height: 100%; }
+.cm-host .cm-scroller { overflow: auto; }
+[data-theme="dark"] .cm-host .tok-keyword { color: #c4a6df; }
+[data-theme="dark"] .cm-host .tok-string { color: #a9cba2; }

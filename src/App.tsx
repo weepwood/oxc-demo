@@ -8,7 +8,6 @@ import {
   Code2,
   Command,
   ExternalLink,
-  FileCode2,
   GitCompare,
   Github,
   Keyboard,
@@ -19,14 +18,16 @@ import {
   RotateCcw,
   Share2,
   Sun,
-  WrapText,
   X,
 } from 'lucide-react';
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { Inspector, ResultMetrics } from './components/Inspector';
+import { CodeEditor } from './components/CodeEditor';
+import type { EditorView } from '@codemirror/view';
+import { runBrowserParser } from './lib/browser-engine';
 import { getTool, tools, type ToolId } from './data/catalog';
 import scenariosJson from './data/samples.json';
-import { formatBytes, type RunResult, type Scenario, type Showcase } from './lib/inspect';
+import { type RunResult, type Scenario, type Showcase } from './lib/inspect';
 import { useThemeMode, type ThemeMode } from './theme';
 
 type View = 'overview' | ToolId;
@@ -37,7 +38,7 @@ const themeChoices: { id: ThemeMode; label: string; icon: typeof Sun }[] = [
   { id: 'light', label: '浅色主题', icon: Sun },
   { id: 'dark', label: '深色主题', icon: Moon },
 ];
-const liveMode = import.meta.env.DEV;
+const nativeMode = import.meta.env.DEV;
 
 function firstCase(tool: ToolId): Scenario {
   return scenarios.find((scenario) => scenario.tool === tool)!;
@@ -104,34 +105,10 @@ function Overview({ selectTool }: { selectTool: (tool: ToolId) => void }) {
       </div>
 
       <section className="workflow-section">
-        <div><h2>不是一张静态截图</h2><p>切换案例即可查看构建时由真实 Oxc 工具生成的结果。运行本地开发服务器，还可以自由编辑源码和即时执行。</p></div>
+        <div><h2>不是一张静态截图</h2><p>切换案例即可查看构建时由真实 Oxc 工具生成的结果。Parser 支持浏览器 WASM 实时执行；运行本地开发服务器，可编辑六种工具的源码并即时执行。</p></div>
         <div className="workflow-actions"><span><Check size={17} /> 诊断定位</span><span><GitCompare size={17} /> 代码差异</span><span><Code2 size={17} /> AST 探索</span></div>
       </section>
     </div>
-  );
-}
-
-function SourceEditor({ value, onChange, fileName, readOnly, wrap, onToggleWrap, editorRef, onKeyDown }: {
-  value: string;
-  onChange: (next: string) => void;
-  fileName: string;
-  readOnly: boolean;
-  wrap: boolean;
-  onToggleWrap: () => void;
-  editorRef: React.RefObject<HTMLTextAreaElement | null>;
-  onKeyDown: (event: ReactKeyboardEvent<HTMLTextAreaElement>) => void;
-}) {
-  const gutterRef = useRef<HTMLDivElement>(null);
-  const lines = value.split('\n').length;
-  return (
-    <section className="source-pane" aria-label="输入代码">
-      <div className="pane-heading"><span><FileCode2 size={17} />{fileName}</span><div className="pane-actions"><IconAction icon={WrapText} label={wrap ? '关闭自动折行' : '开启自动折行'} onClick={onToggleWrap} /></div></div>
-      <div className="editor-inner">
-        <div className="editor-gutter" aria-hidden="true" ref={gutterRef}>{Array.from({ length: lines }, (_, i) => <span key={i}>{i + 1}</span>)}</div>
-        <textarea ref={editorRef} className="code-textarea" aria-label="源代码" value={value} onChange={(event) => onChange(event.target.value)} onKeyDown={onKeyDown} onScroll={(event) => { if (gutterRef.current) gutterRef.current.scrollTop = event.currentTarget.scrollTop; }} readOnly={readOnly} spellCheck={false} wrap={wrap ? 'soft' : 'off'} />
-      </div>
-      <div className="pane-footer"><span>{readOnly ? '快照源码 · 只读' : '可编辑源码'}</span><span>{lines} 行 · {formatBytes(new TextEncoder().encode(value).length)}</span></div>
-    </section>
   );
 }
 
@@ -146,9 +123,12 @@ export default function App() {
   const [liveResult, setLiveResult] = useState<RunResult | null>(null);
   const [runError, setRunError] = useState('');
   const [running, setRunning] = useState(false);
-  const editorRef = useRef<HTMLTextAreaElement>(null);
+  const editorRef = useRef<EditorView | null>(null);
   const requestCounter = useRef(0);
+  const requestController = useRef<AbortController | null>(null);
   const scenario = useMemo(() => scenarios.find((item) => item.id === route.scenarioId) ?? firstCase('lint'), [route.scenarioId]);
+  const browserMode = !nativeMode && scenario.tool === 'parser';
+  const liveMode = nativeMode || browserMode;
   const [source, setSource] = useState(scenario.code);
   const [specifier, setSpecifier] = useState(scenario.specifier ?? 'react');
   const tool = route.view === 'overview' ? null : getTool(route.view);
@@ -158,12 +138,13 @@ export default function App() {
   const snapshot = showcase?.results[scenario.id] ?? null;
   const result = runError ? null : (liveMode ? (liveResult ?? (pristine ? snapshot : null)) : snapshot);
   const actuallyLive = Boolean(liveResult);
-  const previewLabel = actuallyLive ? '实时运行' : '构建快照';
+  const previewLabel = actuallyLive ? (browserMode ? '浏览器 WASM · Parser 0.60.0' : '本地原生运行') : '构建快照';
 
   useEffect(() => {
     const onHashChange = () => {
       const nextRoute = readRoute();
       const nextScenario = scenarios.find((item) => item.id === nextRoute.scenarioId) ?? firstCase('lint');
+      requestController.current?.abort();
       requestCounter.current += 1;
       setLiveResult(null);
       setRunError('');
@@ -213,6 +194,7 @@ export default function App() {
   };
 
   const invalidate = () => {
+    requestController.current?.abort();
     requestCounter.current += 1;
     setLiveResult(null);
     setRunError('');
@@ -238,12 +220,22 @@ export default function App() {
   const run = useCallback(async () => {
     if (!liveMode || running) return;
     const requestId = ++requestCounter.current;
+    const controller = new AbortController();
+    requestController.current?.abort();
+    requestController.current = controller;
+    const timeout = window.setTimeout(() => controller.abort(), 15_000);
     setRunning(true);
     setRunError('');
     setLiveResult(null);
     try {
+      if (browserMode) {
+        const data = await runBrowserParser(scenario.filename, source, controller.signal);
+        if (requestCounter.current === requestId) setLiveResult(data);
+        return;
+      }
       const response = await fetch('/api/run', {
         method: 'POST',
+        signal: controller.signal,
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ tool: scenario.tool, filename: scenario.filename, code: source, specifier }),
       });
@@ -251,11 +243,12 @@ export default function App() {
       if (!response.ok) throw new Error('error' in data ? data.error : '执行失败');
       if (requestCounter.current === requestId) setLiveResult(data as RunResult);
     } catch (error) {
-      if (requestCounter.current === requestId) setRunError(error instanceof Error ? error.message : '执行失败');
+      if (requestCounter.current === requestId) setRunError(controller.signal.aborted ? '请求超时或已取消' : error instanceof Error ? error.message : '执行失败');
     } finally {
+      window.clearTimeout(timeout);
       if (requestCounter.current === requestId) setRunning(false);
     }
-  }, [running, scenario.tool, scenario.filename, source, specifier]);
+  }, [liveMode, browserMode, running, scenario.tool, scenario.filename, source, specifier]);
 
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
@@ -268,29 +261,12 @@ export default function App() {
     return () => window.removeEventListener('keydown', onKey);
   }, [run, route.view]);
 
-  const handleEditorKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
-    if (!liveMode || event.key !== 'Tab') return;
-    event.preventDefault();
-    const el = event.currentTarget;
-    const start = el.selectionStart;
-    const end = el.selectionEnd;
-    const next = source.slice(0, start) + '  ' + source.slice(end);
-    changeSource(next);
-    requestAnimationFrame(() => {
-      if (!editorRef.current) return;
-      editorRef.current.selectionStart = start + 2;
-      editorRef.current.selectionEnd = start + 2;
-    });
-  };
-
   const jumpToLine = (line: number) => {
-    const el = editorRef.current;
-    if (!el || line <= 0) return;
-    const lines = source.split('\n');
-    const position = lines.slice(0, line - 1).reduce((total, text) => total + text.length + 1, 0);
-    el.focus();
-    el.setSelectionRange(position, position + (lines[line - 1]?.length ?? 0));
-    el.scrollTop = Math.max(0, (line - 3) * 22.5);
+    const view = editorRef.current;
+    if (!view || line < 1 || line > view.state.doc.lines) return;
+    const target = view.state.doc.line(line);
+    view.dispatch({ selection: { anchor: target.from, head: target.to }, scrollIntoView: true });
+    view.focus();
   };
 
   const copy = async (text: string, message: string) => {
@@ -303,9 +279,9 @@ export default function App() {
   };
 
   const download = () => {
-    if (!result) return;
+    if (!result || result.truncated) return;
     const extension = scenario.tool === 'parser' || scenario.tool === 'resolver' || scenario.tool === 'lint'
-      ? 'json' : 'js';
+      ? 'json' : scenario.tool === 'format' ? scenario.filename.split('.').pop() ?? 'js' : 'js';
     const blob = new Blob([result.output], { type: 'text/plain;charset=utf-8' });
     const uri = URL.createObjectURL(blob);
     const link = document.createElement('a');
@@ -347,7 +323,7 @@ export default function App() {
             })}
           </nav>
           <div className="sidebar-bottom">
-            <div className="mode-line"><span className="mode-light" />{liveMode ? '本地运行模式' : 'GitHub Pages · 快照模式'}</div>
+            <div className="mode-line"><span className="mode-light" />{nativeMode ? '本地原生模式' : 'GitHub Pages · WASM / 快照'}</div>
             <a href="https://oxc.rs/" target="_blank" rel="noopener noreferrer"><BookOpen size={16} /> 官方文档 <ExternalLink size={13} /></a>
           </div>
         </aside>
@@ -379,7 +355,7 @@ export default function App() {
                   <div className="workbench-heading"><h2>{scenario.title}</h2><span>{scenario.description}</span></div>
                   <div className="workbench-actions">
                     <IconAction icon={Share2} label="复制案例链接" onClick={share} />
-                    {result && <><IconAction icon={Clipboard} label="复制结果" onClick={() => void copy(result.output, '结果已复制')} /><IconAction icon={ArrowDownToLine} label="下载结果" onClick={download} /></>}
+                    {result && <><IconAction icon={Clipboard} label="复制结果" onClick={() => void copy(result.output, '结果已复制')} /><IconAction icon={ArrowDownToLine} label="下载结果" disabled={result.truncated} onClick={download} /></>}
                     {liveMode && <><IconAction icon={RotateCcw} label="恢复示例" onClick={reset} /><button className="run-button" type="button" disabled={running} title="Ctrl / ⌘ + Enter" onClick={() => void run()}><Play size={15} fill="currentColor"/>{running ? '运行中…' : '运行'}</button></>}
                     {!liveMode && <span className="snapshot-label"><span className="mode-light" />可查看结果</span>}
                   </div>
@@ -388,9 +364,9 @@ export default function App() {
                 <div className="code-workspace">
                   <div className="source-stack">
                     {tool.id === 'resolver' && <div className="specifier-bar"><label htmlFor="specifier">模块标识符</label><input id="specifier" value={specifier} onChange={(event) => changeSpecifier(event.target.value)} readOnly={!liveMode} /><span>{liveMode ? '可修改' : '构建时解析'}</span></div>}
-                    <SourceEditor value={source} onChange={changeSource} fileName={scenario.filename} readOnly={!liveMode} wrap={wrap} onToggleWrap={() => setWrap(!wrap)} editorRef={editorRef} onKeyDown={handleEditorKeyDown} />
+                    <CodeEditor value={source} onChange={changeSource} fileName={scenario.filename} readOnly={!liveMode} wrap={wrap} onToggleWrap={() => setWrap(!wrap)} editorRef={editorRef} />
                   </div>
-                  <Inspector key={scenario.id} tool={tool.id} source={source} result={result} loading={running || (!showcase && !snapshotError)} error={runError || snapshotError} specifier={specifier} onJump={jumpToLine} />
+                  <Inspector key={scenario.id} tool={tool.id} source={source} result={result} loading={running || (!showcase && !snapshotError)} error={runError || (result ? '' : snapshotError)} specifier={specifier} onJump={jumpToLine} />
                 </div>
                 <div className="workbench-status">
                   <span className={`run-status ${result ? result.success ? 'success' : 'warning' : 'idle'}`}><span />{running ? '处理中' : runError ? '运行失败' : result ? result.success ? '处理完成' : '存在诊断' : '等待结果'}</span>
@@ -407,7 +383,8 @@ export default function App() {
                 </section>
                 <ResultMetrics tool={tool.id} result={result} isLive={actuallyLive} />
               </div>
-              {!liveMode && <div className="static-notice">当前为 GitHub Pages 静态站点。切换案例会显示 Oxc 在构建时生成的真实结果；如需任意修改源码并重新运行，请在本地执行 <code>npm run dev</code>。</div>}
+              {browserMode && <div className="static-notice">Parser 使用独立 Web Worker 中的 Oxc Parser WASM 0.60.0，源码不会上传。预设快照由原生 Parser 0.156.0 生成，两者版本和 AST 可能不同。恢复示例可重新查看原生快照。</div>}
+              {!liveMode && <div className="static-notice">当前模块为 GitHub Pages 快照模式。切换案例会显示 Oxc 在构建时生成的真实结果；如需任意修改源码并重新运行，请在本地执行 <code>npm run dev</code>。</div>}
             </div>
           )}
           <footer className="page-footer"><span>Oxc Demo · Open source</span><a href="https://github.com/oxc-project/oxc" target="_blank" rel="noopener noreferrer">Oxc 项目 <ExternalLink size={12}/></a></footer>

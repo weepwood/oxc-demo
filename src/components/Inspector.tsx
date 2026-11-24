@@ -144,7 +144,7 @@ function DiagnosticsPanel({ result, onJump }: { result: RunResult; onJump: (line
   const diagnostics = useMemo(() => getDiagnostics(result), [result]);
   if (diagnostics.length === 0) {
     return (
-      <div className="inspector-empty"><CheckCircle2 size={25} /><strong>没有发现问题</strong>
+      <div className="inspector-empty">{result.success ? <CheckCircle2 size={25} /> : <AlertCircle size={25} />}<strong>{result.success ? '没有发现问题' : '诊断结果无法解析'}</strong>
         <p>{result.success ? '当前代码通过了已启用的检查规则。' : '未能解析结构化诊断，请在「代码输出」中查看详细信息。'}</p>
       </div>
     );
@@ -154,10 +154,10 @@ function DiagnosticsPanel({ result, onJump }: { result: RunResult; onJump: (line
     <div className="diagnostic-panel">
       <div className="diagnostic-summary"><AlertCircle size={16} /> 检测到 {diagnostics.length} 项问题 <span>{errors} 错误 · {diagnostics.length - errors} 警告</span></div>
       {diagnostics.map((item, index) => (
-        <button key={index} type="button" className="diagnostic-row" onClick={() => onJump(item.line)} title="定位到源代码">
+        <button key={index} type="button" className="diagnostic-row" disabled={item.line <= 0} onClick={() => onJump(item.line)} title={item.line > 0 ? '定位到源代码' : '无源码位置'}>
           <span className={`diagnostic-severity ${item.severity === 2 ? 'error' : 'warning'}`}><AlertCircle size={16} /></span>
           <span className="diagnostic-text"><strong>{item.message}</strong><span>{item.ruleId}</span></span>
-          <span className="diagnostic-location">第 {item.line} 行 <ArrowRight size={13} /></span>
+          <span className="diagnostic-location">{item.line > 0 ? `第 ${item.line} 行` : '无位置'} <ArrowRight size={13} /></span>
         </button>
       ))}
     </div>
@@ -224,7 +224,7 @@ export function Inspector({
         ) : !result ? (
           <div className="inspector-empty">{loading ? <span className="loading-spinner" /> : <Code2 size={26} />}<strong>{loading ? '正在处理…' : '尚无结果'}</strong><p>{loading ? '工具正在分析代码' : '选择一个案例，或在本地编辑代码后点击运行。'}</p></div>
         ) : tab === 'diff' ? (
-          <DiffPanel before={source} after={result.output} />
+          result.truncated ? <div className="inspector-empty"><AlertCircle size={22} /><strong>输出已截断</strong><p>无法进行完整差异比较，请缩短输入代码。</p></div> : <DiffPanel before={source} after={result.output} />
         ) : tab === 'ast' ? (
           <AstPanel result={result} />
         ) : tab === 'diagnostics' ? (
@@ -232,7 +232,7 @@ export function Inspector({
         ) : tab === 'resolution' ? (
           <ResolutionPanel result={result} specifier={specifier} />
         ) : (
-          <CodeLines code={result.output} />
+          <CodeLines code={result.output + (result.truncated ? '\n\n…结果已截断' : '')} />
         )}
       </div>
     </section>

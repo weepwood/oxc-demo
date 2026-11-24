@@ -23,6 +23,8 @@ await writeFile(
     {
       generatedAt: new Date().toISOString(),
       mode: 'build-snapshot',
+      schemaVersion: 2,
+      commit: process.env.GITHUB_SHA ?? null,
       scenarioCount: scenarios.length,
       results,
     },
